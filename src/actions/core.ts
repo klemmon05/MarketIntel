@@ -6,35 +6,65 @@ import { prisma } from "@/lib/prisma";
 import { importPayloadSchema } from "@/lib/importSchema";
 import { normalizeFact } from "@/lib/utils";
 
+function getRequiredString(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  if (!value || typeof value !== "string" || value.trim() === "") {
+    throw new Error(`${key} is required`);
+  }
+  return value.trim();
+}
+
+function getOptionalString(formData: FormData, key: string): string {
+  const value = formData.get(key);
+  if (!value || typeof value !== "string") return "";
+  return value.trim();
+}
+
+function getValidEnum<T extends string>(formData: FormData, key: string, enumValues: T[]): T {
+  const value = formData.get(key);
+  if (!value || !enumValues.includes(value as T)) {
+    throw new Error(`Invalid value for ${key}`);
+  }
+  return value as T;
+}
+
+function getRequiredDate(formData: FormData, key: string): Date {
+  const value = formData.get(key);
+  if (!value || typeof value !== "string") throw new Error(`${key} is required`);
+  const date = new Date(value);
+  if (isNaN(date.getTime())) throw new Error(`Invalid date for ${key}`);
+  return date;
+}
+
 export async function createSponsor(formData: FormData) {
-  await prisma.sponsor.create({ data: { name: String(formData.get("name")), notes: String(formData.get("notes") || "") } });
+  await prisma.sponsor.create({ data: { name: getRequiredString(formData, "name"), notes: getOptionalString(formData, "notes") } });
   revalidatePath("/sponsors");
 }
 
 export async function createCompany(formData: FormData) {
   await prisma.portfolioCompany.create({
     data: {
-      name: String(formData.get("name")),
-      sponsorId: String(formData.get("sponsorId")),
-      sector: String(formData.get("sector") || ""),
-      geography: String(formData.get("geography") || "")
+      name: getRequiredString(formData, "name"),
+      sponsorId: getRequiredString(formData, "sponsorId"),
+      sector: getOptionalString(formData, "sector"),
+      geography: getOptionalString(formData, "geography")
     }
   });
   revalidatePath("/companies");
 }
 
 export async function upsertSignal(formData: FormData) {
-  const portfolioCompanyId = String(formData.get("portfolioCompanyId"));
-  const sponsorId = String(formData.get("sponsorId"));
-  const observedFact = String(formData.get("observedFact"));
-  const signalType = String(formData.get("signalType")) as SignalType;
+  const portfolioCompanyId = getRequiredString(formData, "portfolioCompanyId");
+  const sponsorId = getRequiredString(formData, "sponsorId");
+  const observedFact = getRequiredString(formData, "observedFact");
+  const signalType = getValidEnum(formData, "signalType", Object.values(SignalType));
   const normalizedFact = normalizeFact(observedFact);
   const existing = await prisma.signal.findFirst({ where: { portfolioCompanyId, signalType, normalizedFact } });
 
   if (existing) {
     await prisma.signal.update({
       where: { id: existing.id },
-      data: { lastSeenAt: new Date(String(formData.get("lastSeenAt"))) }
+      data: { lastSeenAt: getRequiredDate(formData, "lastSeenAt") }
     });
   } else {
     await prisma.signal.create({
@@ -44,9 +74,9 @@ export async function upsertSignal(formData: FormData) {
         observedFact,
         normalizedFact,
         signalType,
-        firstSeenAt: new Date(String(formData.get("firstSeenAt"))),
-        lastSeenAt: new Date(String(formData.get("lastSeenAt"))),
-        confidenceFlags: String(formData.get("confidenceFlags") || "").split(",").map(v => v.trim()).filter(Boolean)
+        firstSeenAt: getRequiredDate(formData, "firstSeenAt"),
+        lastSeenAt: getRequiredDate(formData, "lastSeenAt"),
+        confidenceFlags: getOptionalString(formData, "confidenceFlags").split(",").map(v => v.trim()).filter(Boolean)
       }
     });
   }
@@ -56,11 +86,11 @@ export async function upsertSignal(formData: FormData) {
 export async function createTrigger(formData: FormData) {
   await prisma.triggerHypothesis.create({
     data: {
-      portfolioCompanyId: String(formData.get("portfolioCompanyId")),
-      sponsorId: String(formData.get("sponsorId")),
-      title: String(formData.get("title")),
-      triggerType: String(formData.get("triggerType")) as TriggerType,
-      hypothesisText: String(formData.get("hypothesisText")),
+      portfolioCompanyId: getRequiredString(formData, "portfolioCompanyId"),
+      sponsorId: getRequiredString(formData, "sponsorId"),
+      title: getRequiredString(formData, "title"),
+      triggerType: getValidEnum(formData, "triggerType", Object.values(TriggerType)),
+      hypothesisText: getRequiredString(formData, "hypothesisText"),
       confidenceScore: Number(formData.get("confidenceScore")),
       quietWindow: formData.get("quietWindow") === "on"
     }
@@ -69,9 +99,9 @@ export async function createTrigger(formData: FormData) {
 }
 
 export async function updateTriggerStatus(formData: FormData) {
-  const id = String(formData.get("id"));
-  const status = String(formData.get("status")) as TriggerStatus;
-  const note = String(formData.get("resolutionNote") || "");
+  const id = getRequiredString(formData, "id");
+  const status = getValidEnum(formData, "status", Object.values(TriggerStatus));
+  const note = getOptionalString(formData, "resolutionNote");
 
   if (status === "RESOLVED" && !note) throw new Error("Resolution note required");
 
@@ -93,15 +123,15 @@ export async function updateTriggerStatus(formData: FormData) {
 }
 
 export async function addActionLog(formData: FormData) {
-  const triggerId = String(formData.get("triggerId"));
+  const triggerId = getRequiredString(formData, "triggerId");
   await prisma.actionLog.create({
     data: {
       triggerId,
-      actionType: String(formData.get("actionType")) as ActionType,
-      targetPerson: String(formData.get("targetPerson") || ""),
-      targetOrg: String(formData.get("targetOrg") || ""),
-      actionNotes: String(formData.get("actionNotes")),
-      outcome: String(formData.get("outcome") || "")
+      actionType: getValidEnum(formData, "actionType", Object.values(ActionType)),
+      targetPerson: getOptionalString(formData, "targetPerson"),
+      targetOrg: getOptionalString(formData, "targetOrg"),
+      actionNotes: getRequiredString(formData, "actionNotes"),
+      outcome: getOptionalString(formData, "outcome")
     }
   });
   revalidatePath(`/triggers/${triggerId}`);
@@ -128,7 +158,7 @@ export async function runImport(rawJson: string) {
         create: { sponsorId: sponsor.id, name: companyInput.name, sector: companyInput.sector, geography: companyInput.geography }
       });
       const signalIds: string[] = [];
-      summary.companiesCreated++;
+      if (company.createdAt.getTime() === company.updatedAt.getTime()) summary.companiesCreated++;
 
       for (const signalInput of companyInput.signals) {
         let sourceId: string | undefined;

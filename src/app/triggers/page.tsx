@@ -27,7 +27,7 @@ export default async function TriggersPage() {
         <table className="min-w-full text-sm">
           <thead><tr><th className="p-2 text-left">Title</th><th className="p-2 text-left">Company</th><th className="p-2 text-left">Status</th><th className="p-2">Bulk status</th></tr></thead>
           <tbody>
-            {triggers.map(t => <tr key={t.id} className="border-t"><td className="p-2"><Link className="underline" href={`/triggers/${t.id}`}>{t.title}</Link></td><td className="p-2">{t.portfolioCompany.name}</td><td className="p-2">{t.status}</td><td className="p-2"><form action={updateTriggerStatus} className="flex gap-2"><input type="hidden" name="id" value={t.id} /><select name="status" className="input">{Object.values(TriggerStatus).map(s => <option key={s} selected={s===t.status}>{s}</option>)}</select><button className="btn" type="submit">Update</button></form></td></tr>)}
+            {triggers.map(t => <tr key={t.id} className="border-t"><td className="p-2"><Link className="underline" href={`/triggers/${t.id}`}>{t.title}</Link></td><td className="p-2">{t.portfolioCompany.name}</td><td className="p-2">{t.status}</td><td className="p-2"><form action={updateTriggerStatus} className="flex gap-2"><input type="hidden" name="id" value={t.id} /><select name="status" className="input" defaultValue={t.status}>{Object.values(TriggerStatus).map(s => <option key={s}>{s}</option>)}</select><button className="btn" type="submit">Update</button></form></td></tr>)}
           </tbody>
         </table>
       </div>

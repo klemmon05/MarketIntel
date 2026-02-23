@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum HoldStage {
+  NEW
+  MID
+  LATE
+  UNKNOWN
+}
+
+enum SignalType {
+  LEADERSHIP_CHANGE
+  UNDERPERFORMANCE_GUIDANCE_RESET
+  LIQUIDITY_CAPITAL_STRUCTURE_STRESS
+  STRATEGIC_ALTERNATIVES_ACTIVISM
+  CARVEOUT_DIVESTITURE
+  TRANSFORMATION_INFRASTRUCTURE_BUILDOUT
+  EXEC_FUNCTIONAL_ROLE_SIGNAL
+  SPONSOR_OPERATING_INTERVENTION
+  CUSTOMER_CONCENTRATION_PRICING
+  REGULATORY_LABOR_PRESSURE
+  OTHER
+}
+
+enum TriggerType {
+  STRUCTURAL
+  EARLY_INTERVENTION
+}
+
+enum TriggerStatus {
+  OPEN
+  FOLLOWED_UP
+  RESOLVED
+  DISMISSED
+}
+
+enum ActionType {
+  EMAIL
+  CALL
+  TEXT
+  SLACK
+  MEETING
+  INTRO_REQUEST
+  NOTE
+}
+
+model Sponsor {
+  id                  String             @id @default(uuid()) @db.Uuid
+  name                String             @unique
+  strategyTags        String[]           @default([]) @map("strategy_tags")
+  operatingModelTags  String[]           @default([]) @map("operating_model_tags")
+  notes               String?
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  companies           PortfolioCompany[]
+  signals             Signal[]
+  triggerHypotheses   TriggerHypothesis[]
+
+  @@map("sponsors")
+}
+
+model PortfolioCompany {
+  id                String             @id @default(uuid()) @db.Uuid
+  sponsorId         String             @map("sponsor_id") @db.Uuid
+  sponsor           Sponsor            @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+  name              String
+  sector            String?
+  geography         String?
+  holdStage         HoldStage          @default(UNKNOWN) @map("hold_stage")
+  notes             String?
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  signals           Signal[]
+  triggerHypotheses TriggerHypothesis[]
+
+  @@unique([sponsorId, name])
+  @@map("portfolio_companies")
+}
+
+model SourceItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  url         String
+  title       String
+  publisher   String?
+  publishedAt DateTime? @map("published_at") @db.Date
+  accessedAt  DateTime  @default(now()) @map("accessed_at")
+  rawExcerpt  String?   @map("raw_excerpt")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  signals     Signal[]
+
+  @@map("source_items")
+}
+
+model Signal {
+  id                 String             @id @default(uuid()) @db.Uuid
+  portfolioCompanyId String             @map("portfolio_company_id") @db.Uuid
+  sponsorId          String             @map("sponsor_id") @db.Uuid
+  portfolioCompany   PortfolioCompany   @relation(fields: [portfolioCompanyId], references: [id], onDelete: Cascade)
+  sponsor            Sponsor            @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+  signalType         SignalType         @map("signal_type")
+  observedFact       String             @map("observed_fact")
+  normalizedFact     String             @map("normalized_fact")
+  confidenceFlags    String[]           @default([]) @map("confidence_flags")
+  firstSeenAt        DateTime           @map("first_seen_at") @db.Date
+  lastSeenAt         DateTime           @map("last_seen_at") @db.Date
+  sourceItemId       String?            @map("source_item_id") @db.Uuid
+  sourceItem         SourceItem?        @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  triggerSignals     TriggerSignal[]
+
+  @@index([portfolioCompanyId, signalType, normalizedFact])
+  @@map("signals")
+}
+
+model TriggerHypothesis {
+  id                String             @id @default(uuid()) @db.Uuid
+  portfolioCompanyId String            @map("portfolio_company_id") @db.Uuid
+  sponsorId         String             @map("sponsor_id") @db.Uuid
+  portfolioCompany  PortfolioCompany   @relation(fields: [portfolioCompanyId], references: [id], onDelete: Cascade)
+  sponsor           Sponsor            @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+  title             String
+  triggerType       TriggerType        @map("trigger_type")
+  hypothesisText    String             @map("hypothesis_text")
+  confidenceScore   Decimal            @map("confidence_score") @db.Decimal(2, 1)
+  quietWindow       Boolean            @default(false) @map("quiet_window")
+  sponsorIntentNotes String?           @map("sponsor_intent_notes")
+  status            TriggerStatus      @default(OPEN)
+  owner             String?
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+  triggerSignals    TriggerSignal[]
+  actionLogs        ActionLog[]
+
+  @@map("trigger_hypotheses")
+}
+
+model TriggerSignal {
+  triggerId String            @map("trigger_id") @db.Uuid
+  signalId  String            @map("signal_id") @db.Uuid
+  trigger   TriggerHypothesis @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+  signal    Signal            @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  @@id([triggerId, signalId])
+  @@map("trigger_signals")
+}
+
+model ActionLog {
+  id           String            @id @default(uuid()) @db.Uuid
+  triggerId    String            @map("trigger_id") @db.Uuid
+  trigger      TriggerHypothesis @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+  actionType   ActionType        @map("action_type")
+  targetPerson String?           @map("target_person")
+  targetOrg    String?           @map("target_org")
+  actionNotes  String            @map("action_notes")
+  actionDate   DateTime          @default(now()) @map("action_date")
+  outcome      String?
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  @@map("action_logs")
+}
